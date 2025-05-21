@@ -8,22 +8,24 @@ import urllib3
 app = Flask(__name__)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# === Hanshow API Config ===
+# === Hanshow API Configuration ===
 API_BASE = "https://boolchand.slscanada.ca:9001"
 USERNAME = "guest"
 PASSWORD = "Z3Vlc3Q="
 CUSTOMER_CODE = "boolchand"
 STORE_CODE = "teststore"
 
-# === Get token from Hanshow ===
+# === STEP 1: Get Bearer Token ===
 def get_token():
-    res = requests.post(f"{API_BASE}/proxy/token",
-                        auth=HTTPBasicAuth(USERNAME, PASSWORD),
-                        verify=False)
-    res.raise_for_status()
-    return res.json()["access_token"]
+    response = requests.post(
+        f"{API_BASE}/proxy/token",
+        auth=HTTPBasicAuth(USERNAME, PASSWORD),
+        verify=False
+    )
+    response.raise_for_status()
+    return response.json()["access_token"]
 
-# === Build and send update payload ===
+# === STEP 2: Send formatted ESL updates ===
 def update_esl(items):
     token = get_token()
     url = f"{API_BASE}/proxy/integration/{CUSTOMER_CODE}/{STORE_CODE}"
@@ -31,18 +33,23 @@ def update_esl(items):
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
     }
+
     payload = {
         "customerStoreCode": CUSTOMER_CODE,
         "storeCode": STORE_CODE,
-        "batchNo": "batch-a1-" + pd.Timestamp.now().strftime('%Y%m%d%H%M%S'),
+        "batchNo": "batch-" + pd.Timestamp.now().strftime('%Y%m%d%H%M%S'),
         "items": items
     }
+
+    print(f"📦 Sending batch with {len(items)} items")
     response = requests.post(url, headers=headers, json=payload, verify=False)
+    print("📡 API Response:")
+    print(response.status_code, response.text)
     return response.status_code, response.json()
 
 @app.route('/')
 def home():
-    return 'A1 ESL Updater is running'
+    return '✅ ESL Update Service is Running'
 
 @app.route('/convert', methods=['POST'])
 def convert_excel():
@@ -54,7 +61,7 @@ def convert_excel():
         if file.filename == '':
             return "Empty filename", 400
 
-        # Read and skip first row
+        # Skip first row
         df = pd.read_excel(file, skiprows=1, dtype=str)
 
         items = []
@@ -63,21 +70,23 @@ def convert_excel():
                 sku = str(row['Product ID']).strip()
                 short_name = str(row['Product Code']).strip()
                 price = float(row['Current Retail'])
-                stock = int(float(row['Act On Hand'])) if 'Act On Hand' in row and pd.notna(row['Act On Hand']) else 0
+                stock = int(float(row['Act On Hand'])) if pd.notna(row['Act On Hand']) else 0
 
                 item = {
                     "IIS_COMMAND": "UPDATE",
                     "sku": sku,
+                    "itemName": short_name,
                     "itemShortName": short_name,
                     "price1": price,
                     "inventory": stock
                 }
+
                 items.append(item)
             except Exception as row_error:
-                print(f"❌ Skipping row due to error: {row_error}")
+                print(f"⚠️ Skipping row: {row_error}")
 
         if not items:
-            return "No valid items found to update.", 400
+            return "No valid items found.", 400
 
         status, result = update_esl(items)
         return jsonify({
@@ -87,8 +96,7 @@ def convert_excel():
         })
 
     except Exception as e:
-        print("=== ERROR IN /convert ===")
-        print(str(e))
+        print("❌ ERROR IN /convert")
         traceback.print_exc()
         return f"Error: {str(e)}", 500
 
