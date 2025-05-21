@@ -15,6 +15,7 @@ PASSWORD = "Z3Vlc3Q="
 CUSTOMER_CODE = "boolchand"
 STORE_CODE = "teststore"
 
+# === Get bearer token from Hanshow ===
 def get_token():
     response = requests.post(
         f"{API_BASE}/proxy/token",
@@ -24,6 +25,7 @@ def get_token():
     response.raise_for_status()
     return response.json()["access_token"]
 
+# === Send items in batches of 1000 ===
 def update_esl(items):
     token = get_token()
     url = f"{API_BASE}/proxy/integration/{CUSTOMER_CODE}/{STORE_CODE}"
@@ -32,18 +34,31 @@ def update_esl(items):
         "Content-Type": "application/json"
     }
 
-    payload = {
-        "customerStoreCode": CUSTOMER_CODE,
-        "storeCode": STORE_CODE,
-        "batchNo": "batch-" + pd.Timestamp.now().strftime('%Y%m%d%H%M%S'),
-        "items": items
-    }
+    responses = []
+    batch_size = 1000
+    for i in range(0, len(items), batch_size):
+        batch = items[i:i+batch_size]
+        payload = {
+            "customerStoreCode": CUSTOMER_CODE,
+            "storeCode": STORE_CODE,
+            "batchNo": f"batch-{pd.Timestamp.now().strftime('%Y%m%d%H%M%S')}-{i//batch_size + 1}",
+            "items": batch
+        }
 
-    print(f"📦 Sending batch with {len(items)} items")
-    response = requests.post(url, headers=headers, json=payload, verify=False)
-    print("📡 API Response:")
-    print(response.status_code, response.text)
-    return response.status_code, response.json()
+        print(f"📦 Sending batch {i//batch_size + 1} with {len(batch)} items")
+        response = requests.post(url, headers=headers, json=payload, verify=False)
+        print("📡 API Response:", response.status_code, response.text)
+        try:
+            res_json = response.json()
+        except:
+            res_json = {"error": "Failed to decode JSON", "text": response.text}
+        responses.append({
+            "batch": i//batch_size + 1,
+            "status": response.status_code,
+            "response": res_json
+        })
+
+    return 200, {"batches_sent": len(responses), "results": responses}
 
 @app.route('/')
 def home():
@@ -71,9 +86,11 @@ def convert_excel():
                 brand = str(row['Brand Name']).strip()
                 price = float(row['Current Retail'])
 
-                # Handle stock from "Qty On Hand"
+                # Identify correct stock column
                 stock_column = next(
-                    (col for col in row.index if col.strip().lower().replace(" ", "") in ["qtyonhand", "quantityonhand", "onhand", "stock"]),
+                    (col for col in row.index if col.strip().lower().replace(" ", "") in [
+                        "qtyonhand", "quantityonhand", "onhand", "stock"
+                    ]),
                     None
                 )
                 stock = int(float(row[stock_column])) if stock_column and pd.notna(row[stock_column]) else 0
@@ -98,8 +115,8 @@ def convert_excel():
         status, result = update_esl(items)
         return jsonify({
             "status": status,
-            "result": result,
-            "items_sent": len(items)
+            "total_items": len(items),
+            "result": result
         })
 
     except Exception as e:
