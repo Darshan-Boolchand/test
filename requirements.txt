@@ -4,3 +4,4 @@ pandas
 openpyxl
 xlrd
 urllib3
+gunicorn
