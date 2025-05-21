@@ -15,7 +15,6 @@ PASSWORD = "Z3Vlc3Q="
 CUSTOMER_CODE = "boolchand"
 STORE_CODE = "teststore"
 
-# === STEP 1: Get Bearer Token ===
 def get_token():
     response = requests.post(
         f"{API_BASE}/proxy/token",
@@ -25,7 +24,6 @@ def get_token():
     response.raise_for_status()
     return response.json()["access_token"]
 
-# === STEP 2: Send formatted ESL updates ===
 def update_esl(items):
     token = get_token()
     url = f"{API_BASE}/proxy/integration/{CUSTOMER_CODE}/{STORE_CODE}"
@@ -61,22 +59,31 @@ def convert_excel():
         if file.filename == '':
             return "Empty filename", 400
 
-        # Skip first row
         df = pd.read_excel(file, skiprows=1, dtype=str)
+        print("🧾 Columns in uploaded Excel:", df.columns.tolist())
 
         items = []
         for _, row in df.iterrows():
             try:
                 sku = str(row['Product ID']).strip()
                 short_name = str(row['Product Code']).strip()
+                name = str(row['Description']).strip()
+                brand = str(row['Brand Name']).strip()
                 price = float(row['Current Retail'])
-                stock = int(float(row['Act On Hand'])) if pd.notna(row['Act On Hand']) else 0
+
+                # Handle stock from "Qty On Hand"
+                stock_column = next(
+                    (col for col in row.index if col.strip().lower().replace(" ", "") in ["qtyonhand", "quantityonhand", "onhand", "stock"]),
+                    None
+                )
+                stock = int(float(row[stock_column])) if stock_column and pd.notna(row[stock_column]) else 0
 
                 item = {
                     "IIS_COMMAND": "UPDATE",
                     "sku": sku,
-                    "itemName": short_name,
                     "itemShortName": short_name,
+                    "itemName": name,
+                    "manufacturer": brand,
                     "price1": price,
                     "inventory": stock
                 }
