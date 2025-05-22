@@ -87,8 +87,8 @@ def convert_excel():
                 retail = float(row['Current Retail'])
 
                 # === PRICE CALCULATIONS ===
-                price1 = round(retail * 1.0753, 2)     # with tax
-                price2 = round(price1 / 1.8, 2)         # in dollars
+                price1 = round(retail * 1.0753)     # with tax
+                price2 = round(price1 / 1.8)         # in dollars
 
                 # === STOCK ===
                 stock_column = next(
