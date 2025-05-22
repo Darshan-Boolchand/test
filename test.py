@@ -84,9 +84,13 @@ def convert_excel():
                 short_name = str(row['Product Code']).strip()
                 name = str(row['Description']).strip()
                 brand = str(row['Brand Name']).strip()
-                price = float(row['Current Retail'])
+                retail = float(row['Current Retail'])
 
-                # Identify correct stock column
+                # === PRICE CALCULATIONS ===
+                price1 = round(retail * 1.0753, 2)     # with tax
+                price2 = round(price1 / 1.8, 2)         # in dollars
+
+                # === STOCK ===
                 stock_column = next(
                     (col for col in row.index if col.strip().lower().replace(" ", "") in [
                         "qtyonhand", "quantityonhand", "onhand", "stock"
@@ -101,7 +105,8 @@ def convert_excel():
                     "itemShortName": short_name,
                     "itemName": name,
                     "manufacturer": brand,
-                    "price1": price,
+                    "price1": price1,
+                    "price2": price2,
                     "inventory": stock
                 }
 
